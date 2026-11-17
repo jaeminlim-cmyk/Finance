@@ -131,6 +131,9 @@ def overview():
     m = metrics(f.store, init)
     budget = f.llm.budget()
     last = f.store.one("SELECT id, ts, kind, status, stage, summary FROM meetings ORDER BY id DESC LIMIT 1")
+    first_bench = f.store.scalar("SELECT benchmark FROM equity WHERE benchmark IS NOT NULL ORDER BY ts LIMIT 1")
+    bench_now = f.data.quote(f.cfg.fund.benchmark)
+    bench_ret = round(bench_now / first_bench - 1, 5) if first_bench and bench_now else None
     return {
         "now": iso(now), "market_open": is_market_open(now),
         "mode": {"trading": f.cfg.trading_mode, "data": f.cfg.data_mode, "llm": f.cfg.llm_mode},
@@ -140,7 +143,7 @@ def overview():
         "initial_capital": init,
         "day_pnl": round(snap["equity"] - base, 2), "day_pnl_pct": round(snap["equity"] / base - 1, 5) if base else 0,
         "total_pnl": round(snap["equity"] - init, 2), "total_return": round(snap["equity"] / init - 1, 5),
-        "benchmark": f.cfg.fund.benchmark, "benchmark_return": m.get("benchmark_return"),
+        "benchmark": f.cfg.fund.benchmark, "benchmark_return": bench_ret,
         "sharpe": m.get("sharpe"), "max_drawdown": m.get("max_drawdown"),
         "status": {
             "kill_switch": f.risk.kill_switch, "halted": f.risk.halted, "halt_reason": f.store.get_state("halt_reason"),
@@ -169,6 +172,7 @@ def positions():
     snap = ctx.fund.portfolio.snapshot()
     return {"equity": snap["equity"], "cash": snap["cash"], "cash_pct": snap["cash_pct"],
             "positions": _with_names(snap["positions"]),
+            "limits": {"max_sector_pct": ctx.fund.cfg.risk.max_sector_pct, "min_cash_pct": ctx.fund.cfg.risk.min_cash_pct},
             "sectors": [{"sector": k, "value": round(v, 2), "weight": round(v / snap["equity"], 4)}
                         for k, v in sorted(snap["sector_value"].items(), key=lambda x: -x[1])]}
 
@@ -270,7 +274,7 @@ def risk():
     f = ctx.fund
     return {
         "exposure": f.risk.exposure(f.portfolio.snapshot()),
-        "events": f.store.query("SELECT * FROM risk_events ORDER BY id DESC LIMIT 100"),
+        "events": f.store.query("SELECT * FROM risk_events WHERE kind!='order_blocked' ORDER BY id DESC LIMIT 100"),
         "blocked": _with_names(f.store.query("SELECT * FROM orders WHERE status='rejected' ORDER BY id DESC LIMIT 100")),
     }
 

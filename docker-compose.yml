@@ -1,0 +1,13 @@
+services:
+  fund:
+    build: .
+    # 인증이 없는 로컬 도구이므로 이 컴퓨터에서만 접속되도록 127.0.0.1 에 묶는다.
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config:ro
+    restart: unless-stopped

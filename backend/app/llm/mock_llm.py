@@ -14,7 +14,10 @@ from .base import LLMCall, LLMClient, Usage
 
 POS_WORDS = ("웃돌", "공급 계약", "목표주가 상향", "자사주 매입", "수요가 예상보다 강")
 NEG_WORDS = ("못 미쳤", "조사 착수", "하향 조정", "사임", "지연")
-INJECTION_WORDS = ("이전 지시를 무시", "ignore previous", "즉시 강력매수로 보고")
+AGENT_TITLES = {"chart": "차트 분석가", "technical": "기술적 분석가", "financials": "재무제표 분석가",
+                "fundamental": "기본적 분석가", "news": "뉴스 분석가", "community": "커뮤니티 분석가",
+                "sentiment": "센티먼트 분석가"}
+INJECTION_WORDS =("이전 지시를 무시", "ignore previous", "즉시 강력매수로 보고")
 
 
 def _signal(score: float) -> str:
@@ -230,7 +233,7 @@ class MockLLM(LLMClient):
         ko = {"risk_on": "위험선호", "neutral": "중립", "risk_off": "위험회피"}[regime]
         return MacroReport(
             regime=regime, confidence=0.6,
-            summary=f"시장 국면 {ko} — 지수가 200일선 대비 {trend:+.1%}, 변동성 지표 {vix}",
+            summary=f"{ko} 국면 — 지수가 200일선 대비 {trend:+.1%}, 변동성 지표 {vix}",
             evidence=[Evidence(point=f"S&P 500 이 200일선 대비 {trend:+.1%}", source="macro.spy_vs_sma200"),
                       Evidence(point=f"변동성 지표 {vix}", source="macro.vix_proxy"),
                       Evidence(point=f"미 10년물 금리 {m.get('ust10y_yield')}%, 20일 변화 {m.get('ust10y_change_20d'):+}%p",
@@ -324,7 +327,8 @@ class MockLLM(LLMClient):
 
     def _head(self, c: dict, _u: dict) -> FinalDecision:
         cons, pos, prop, review = c["consensus_score"], c.get("position"), c.get("proposal"), c.get("risk_review")
-        factors = [f"리서치 합의 점수 {cons:+.2f}", f"거시 국면 {(c.get('macro') or {}).get('regime', 'neutral')}"]
+        regime = {"risk_on": "위험선호", "risk_off": "위험회피"}.get((c.get("macro") or {}).get("regime"), "중립")
+        factors = [f"리서치 합의 점수 {cons:+.2f}", f"거시 국면 {regime}"]
         if prop is None:  # 보유 종목 약식 재검토
             if cons <= -0.25 or (pos and pos.get("unrealized_pct", 0) < -0.06 and cons < 0):
                 return FinalDecision(action="sell", conviction=0.6, size_multiplier=1.0, stop_price=None, target_price=None,
@@ -378,6 +382,8 @@ class MockLLM(LLMClient):
         if win:
             lesson = f"{t['symbol']}({t.get('sector')}): {cons_txt}해 {t['pnl_pct']:+.1%} 로 {reason} 청산. 같은 조건의 신호는 계속 신뢰할 만함."
         else:
-            lesson = f"{t['symbol']}({t.get('sector')}): {cons_txt}했으나 {t['pnl_pct']:+.1%} 로 {reason} 청산. {', '.join(wrong) or '낙관 의견'} 쪽 신호의 비중을 낮춰 볼 것."
-        return PostMortem(lesson=lesson, what_worked=[f"{a} 의 판단" for a in right][:3],
-                          what_failed=[f"{a} 의 판단" for a in wrong][:3], agents_right=right, agents_wrong=wrong)
+            names = ", ".join(AGENT_TITLES.get(a, a) for a in wrong) or "낙관 의견"
+            lesson = f"{t['symbol']}({t.get('sector')}): {cons_txt}했으나 {t['pnl_pct']:+.1%} 로 {reason} 청산. {names} 쪽 신호의 비중을 낮춰 볼 것."
+        return PostMortem(lesson=lesson, what_worked=[f"{AGENT_TITLES.get(a, a)}의 판단" for a in right][:3],
+                          what_failed=[f"{AGENT_TITLES.get(a, a)}의 판단" for a in wrong][:3],
+                          agents_right=right, agents_wrong=wrong)
