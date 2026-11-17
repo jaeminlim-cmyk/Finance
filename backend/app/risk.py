@@ -65,28 +65,33 @@ class RiskEngine:
         self.event("resume", f"{actor} 가 낙폭 중단 상태를 해제했습니다")
 
     # ── 계좌 한도 감시 ─────────────────────────────────────
+    def view_limits(self, equity: float) -> dict:
+        """현재 일일 손익과 낙폭을 계산만 한다(상태를 바꾸지 않음). 대시보드 조회용."""
+        today = self.clock.now().date().isoformat()
+        start = self.store.get_state("day_start")
+        start_eq = start["equity"] if start and start["day"] == today else equity
+        peak = max(self.store.get_state("peak_equity") or equity, equity)
+        return {"day_pnl_pct": equity / start_eq - 1 if start_eq else 0.0,
+                "drawdown_pct": equity / peak - 1 if peak else 0.0, "peak_equity": peak, "day_start_equity": start_eq}
+
     def update_limits(self, equity: float) -> dict:
-        """평가액이 바뀔 때마다 호출. 일일 손실·낙폭 한도를 검사한다."""
+        """평가액이 바뀔 때마다 호출. 일일 손실·낙폭 한도를 검사하고 필요하면 매매를 멈춘다."""
         today = self.clock.now().date().isoformat()
         start = self.store.get_state("day_start")
         if not start or start["day"] != today:
-            start = {"day": today, "equity": equity}
-            self.store.set_state("day_start", start)
-        peak = self.store.get_state("peak_equity")
-        if peak is None or equity > peak:
-            peak = equity
-            self.store.set_state("peak_equity", peak)
-        day_pnl = equity / start["equity"] - 1 if start["equity"] else 0.0
-        drawdown = equity / peak - 1 if peak else 0.0
+            self.store.set_state("day_start", {"day": today, "equity": equity})
+        v = self.view_limits(equity)
+        if v["peak_equity"] != self.store.get_state("peak_equity"):
+            self.store.set_state("peak_equity", v["peak_equity"])
         r = self.cfg.risk
-        if day_pnl <= -r.daily_loss_limit_pct and not self.daily_stop_active():
+        if v["day_pnl_pct"] <= -r.daily_loss_limit_pct and not self.daily_stop_active():
             self.store.set_state("daily_stop_day", today)
-            self.event("daily_loss_limit", f"당일 손익 {day_pnl:.2%} — 한도 -{r.daily_loss_limit_pct:.0%} 도달, 신규 진입 중단")
-        if drawdown <= -r.max_drawdown_pct and not self.halted:
+            self.event("daily_loss_limit", f"당일 손익 {v['day_pnl_pct']:.2%} — 한도 -{r.daily_loss_limit_pct:.0%} 도달, 신규 진입 중단")
+        if v["drawdown_pct"] <= -r.max_drawdown_pct and not self.halted:
             self.store.set_state("halted", True)
-            self.store.set_state("halt_reason", f"고점 대비 {drawdown:.2%}")
-            self.event("max_drawdown", f"고점 대비 낙폭 {drawdown:.2%} — 한도 -{r.max_drawdown_pct:.0%} 도달, 전체 매매 중단")
-        return {"day_pnl_pct": day_pnl, "drawdown_pct": drawdown, "peak_equity": peak, "day_start_equity": start["equity"]}
+            self.store.set_state("halt_reason", f"고점 대비 {v['drawdown_pct']:.2%}")
+            self.event("max_drawdown", f"고점 대비 낙폭 {v['drawdown_pct']:.2%} — 한도 -{r.max_drawdown_pct:.0%} 도달, 전체 매매 중단")
+        return v
 
     # ── 포지션 크기 ────────────────────────────────────────
     def default_stop(self, price: float, atr: float | None) -> float:
@@ -175,7 +180,7 @@ class RiskEngine:
         by_symbol: dict[str, float] = {}
         for p in snapshot["positions"]:
             by_symbol[p["symbol"]] = by_symbol.get(p["symbol"], 0.0) + p["market_value"]
-        limits = self.update_limits(snapshot["equity"])
+        limits = self.view_limits(snapshot["equity"])
         open_risk = sum(max(0.0, (p["price"] - p["stop_price"]) * p["qty"]) for p in snapshot["positions"] if p["stop_price"])
         return {
             "limits": r.model_dump() | {"scalper_capital_pct": self.cfg.scalper.capital_pct},

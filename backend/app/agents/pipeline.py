@@ -104,7 +104,7 @@ class MeetingRunner:
         return [r["lesson"] for r in rows]
 
     # ── 회의 실행 ──────────────────────────────────────────
-    def run(self, kind: str = "premarket", holdings_only: bool = False) -> int:
+    def run(self, kind: str = "premarket", holdings_only: bool = False, only: list[str] | None = None) -> int:
         f = self.f
         now = iso(f.clock.now())
         usage_mark = f.store.scalar("SELECT MAX(id) FROM llm_usage", default=0)
@@ -112,7 +112,7 @@ class MeetingRunner:
         f.store.audit(now, "meeting", "meeting_started", {"meeting_id": mid, "kind": kind})
         status, error = "done", None
         try:
-            self._run(mid, kind, holdings_only)
+            self._run(mid, kind, holdings_only, only)
         except BudgetExceeded as e:
             status, error = "budget_stopped", str(e)
             f.risk.event("llm_budget", str(e))
@@ -125,12 +125,15 @@ class MeetingRunner:
         f.store.emit("meeting", {"id": mid, "status": status})
         return mid
 
-    def _run(self, mid: int, kind: str, holdings_only: bool) -> None:
+    def _run(self, mid: int, kind: str, holdings_only: bool, only: list[str] | None = None) -> None:
         f, cfg = self.f, self.f.cfg
         budget = f.llm.budget()
         if budget.level == "exhausted":
             raise BudgetExceeded(f"이번 달 LLM 예산 ${budget.budget:.2f} 소진 — 회의를 열지 않습니다.")
         holdings = {p["symbol"]: p for p in f.portfolio.positions() if p["desk"] == "swing"}
+        if only is not None:  # 장중 점검: 지정된 보유 종목만 다시 본다
+            holdings = {s: p for s, p in holdings.items() if s in only}
+            holdings_only = True
         blocked = f.risk.entries_blocked()
         n_research, n_debate, rounds = cfg.universe.max_research, cfg.universe.max_debate, cfg.llm.debate_rounds
         notes = []

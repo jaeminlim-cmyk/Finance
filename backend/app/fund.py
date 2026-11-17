@@ -159,9 +159,9 @@ class Fund:
         self.risk.update_limits(snap["equity"])
         return snap
 
-    def run_meeting(self, kind: str = "premarket", holdings_only: bool = False) -> int:
+    def run_meeting(self, kind: str = "premarket", holdings_only: bool = False, only: list[str] | None = None) -> int:
         self.risk.update_limits(self.portfolio.snapshot()["equity"])
-        mid = self.meetings.run(kind, holdings_only=holdings_only)
+        mid = self.meetings.run(kind, holdings_only=holdings_only, only=only)
         if is_market_open(self.clock.now()):
             self.execute_pending()
         return mid
