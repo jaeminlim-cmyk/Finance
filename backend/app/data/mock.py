@@ -104,9 +104,9 @@ class MockProvider(DataProvider):
     def _market_returns(self) -> list[float]:
         rng, out, regime, trend = _rng("market"), [], 1, 0.0
         for _ in self._days:
-            if rng.random() < 0.012:
+            if rng.random() < (0.006 if regime > 0 else 0.02):  # 상승 국면이 더 길다
                 regime = -regime
-            trend = 0.95 * trend + rng.gauss(0, 0.0006)
+            trend = 0.95 * trend + rng.gauss(0, 0.0002)
             drift = 0.0007 if regime > 0 else -0.0006
             vol = 0.008 if regime > 0 else 0.014
             out.append(drift + trend + rng.gauss(0, vol))
@@ -136,8 +136,9 @@ class MockProvider(DataProvider):
         price, trend, bars = float(base), 0.0, []
         base_volume = 6e9 / base * (1.5 if symbol in ETFS else 1.0)
         for i, d in enumerate(self._days):
-            trend = 0.97 * trend + rng.gauss(0, idio_vol * 0.07)
-            ret = beta * self._market[i] + trend + rng.gauss(0, idio_vol) + jumps.get(d, 0.0)
+            trend = 0.97 * trend + rng.gauss(0, idio_vol * 0.02)
+            # 0.5σ² 를 더해 변동성이 큰 종목이 장기적으로 0 에 수렴하는 것을 막는다
+            ret = beta * self._market[i] + trend + rng.gauss(0, idio_vol) + 0.5 * idio_vol ** 2 + jumps.get(d, 0.0)
             ret = max(-0.35, min(0.35, ret))
             gap = jumps.get(d, 0.0) * 0.8 + rng.gauss(0, idio_vol * 0.35)
             o = price * (1 + gap)

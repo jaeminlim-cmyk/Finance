@@ -112,6 +112,7 @@ class Store:
         with self._lock:
             if self.path != ":memory:":
                 self._conn.execute("PRAGMA journal_mode=WAL")
+                self._conn.execute("PRAGMA synchronous=NORMAL")
             self._conn.executescript(SCHEMA)
 
     # ── 기본 연산 ──────────────────────────────────────────
