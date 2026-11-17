@@ -1,0 +1,26 @@
+[project]
+name = "ai-hedge-fund"
+version = "0.1.0"
+description = "미국 주식 멀티 에이전트 모의 자동매매 시스템"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2.7",
+  "python-dotenv>=1.0",
+  "anthropic>=1.0",
+]
+
+[project.optional-dependencies]
+live = ["yfinance>=0.2.50", "requests>=2.32"]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

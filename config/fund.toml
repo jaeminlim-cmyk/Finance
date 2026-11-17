@@ -1,0 +1,48 @@
+# AI 헤지펀드 운용 설정. 값을 바꾼 뒤 서버를 다시 시작하면 적용됩니다.
+
+[fund]
+initial_capital = 100000.0
+benchmark = "SPY"
+
+[universe]
+# 비워 두면 내장 유니버스(대형 유동주)를 사용합니다. 관심종목은 watchlist 에 추가하세요.
+symbols = []
+watchlist = []
+max_research = 10        # 회의마다 리서치할 신규 후보 종목 수
+max_debate = 4           # 토론까지 올릴 신규 후보 종목 수
+
+[risk]                   # 주문 직전에 코드가 강제하는 한도 (LLM 이 넘을 수 없음)
+max_position_pct = 0.10          # 종목당 최대 비중
+max_sector_pct = 0.30            # 섹터당 최대 비중
+min_cash_pct = 0.10              # 최소 현금 비중
+max_risk_per_trade_pct = 0.01    # 1회 거래 최대 손실 위험 (진입가~손절가)
+daily_loss_limit_pct = 0.03      # 일일 손실 한도 → 당일 신규 진입 중단
+max_drawdown_pct = 0.15          # 고점 대비 낙폭 한도 → 전체 중단, 사람 확인 대기
+earnings_blackout_days = 2       # 실적 발표 N 거래일 전부터 신규 진입 금지
+min_price = 5.0                  # 초저가주 제외
+min_avg_dollar_volume = 20000000 # 20일 평균 거래대금 하한
+stop_atr_multiple = 2.0          # 기본 손절: 진입가 - ATR × 배수
+target_r_multiple = 2.0          # 기본 목표: 손절 폭 × 배수
+
+[scalper]
+enabled = true
+capital_pct = 0.10               # 스캘핑 데스크에 배정되는 자본 상한
+max_candidates = 3
+risk_per_trade_pct = 0.0025
+bar_minutes = 5
+
+[broker]
+slippage_bps = 5.0               # 체결 슬리피지 (0.05%)
+commission_per_share = 0.005
+min_commission = 1.0
+max_participation = 0.05         # 봉 거래량의 5%까지만 체결 (부분 체결)
+
+[llm]
+monthly_budget_usd = 100.0
+research_model = "claude-haiku-5-5"   # 리서치 본부: 빠르고 저렴한 모델
+senior_model = "claude-opus-5-5"      # 토론·트레이더·리스크·수석: 고성능 모델
+debate_rounds = 2
+
+[schedule]                       # 미국 동부시간(ET) 기준
+premarket = "09:00"
+intraday_review_minutes = 60
