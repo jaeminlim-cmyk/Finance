@@ -43,14 +43,15 @@ class _Cache:
 
     def get(self, key, ttl: float, fn):
         hit = self._d.get(key)
-        if hit and _time.time() - hit[0] < ttl:
+        if hit and _time.time() < hit[0]:
             return hit[1]
         try:
-            value = fn()
+            value, keep = fn(), ttl
         except Exception as e:  # 외부 데이터 실패는 '데이터 없음'으로 흡수한다
             log.warning("데이터 조회 실패 %s: %s", key, e)
-            value = hit[1] if hit else None
-        self._d[key] = (_time.time(), value)
+            # 일시적인 실패(요청 한도 등)가 오래 남지 않도록 1분 뒤에 다시 시도한다. 그동안은 이전 값을 쓴다.
+            value, keep = (hit[1] if hit else None), min(ttl, 60)
+        self._d[key] = (_time.time() + keep, value)
         return value
 
 

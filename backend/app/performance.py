@@ -107,7 +107,8 @@ def agent_stats(store: Store) -> list[dict]:
                         f"WHERE {col} IS NOT NULL ORDER BY id DESC LIMIT 1")
         if row:
             v = row[col]
-            summary = v if isinstance(v, str) else f"{v.get('action') or v.get('verdict')}: {v.get('rationale')}"
+            ko = {"buy": "매수", "sell": "매도", "hold": "보유·관망", "approve": "승인", "reduce": "축소", "reject": "거부"}
+            summary = v if isinstance(v, str) else f"{ko.get(v.get('action') or v.get('verdict'), '')}: {v.get('rationale')}"
             latest[agent] = {"symbol": row["symbol"], "summary": summary, "ts": row["ts"], "signal": None, "confidence": None}
     row = store.one("SELECT symbol, lesson, ts FROM lessons ORDER BY id DESC LIMIT 1")
     if row:

@@ -10,3 +10,4 @@ data/*.db
 data/*.db-*
 data/backtests/
 *.log
+*.egg-info/
