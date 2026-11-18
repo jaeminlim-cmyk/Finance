@@ -12,6 +12,16 @@
 
 API 키 없이 샘플 데이터와 가짜 LLM 응답으로 전체 흐름을 바로 돌려 볼 수 있습니다.
 
+### Windows
+
+1. Python 3.11 이상을 설치합니다. 명령 프롬프트에서 `winget install Python.Python.3.12` 를 실행하거나 [python.org](https://www.python.org/downloads/) 에서 받습니다.
+2. GitHub 저장소 페이지의 **Code → Download ZIP** 으로 받아 압축을 풉니다. (Git 과 Node.js 는 필요 없습니다.)
+3. 폴더 안의 **`start.bat`** 을 더블클릭합니다. 처음에는 패키지 설치와 60거래일 재생에 몇 분 걸리고, 끝나면 브라우저가 자동으로 열립니다.
+
+검은 창을 닫으면 서버가 꺼집니다. 다시 볼 때도 `start.bat` 을 실행하면 됩니다.
+
+### macOS · Linux
+
 ```bash
 # 1) 백엔드
 cd backend
@@ -155,6 +165,7 @@ config/fund.toml   한도·모델·일정
 ```
 
 프런트엔드는 요구사항의 Next.js 대신 Vite + React 를 썼습니다. 빌드 결과를 FastAPI 가 그대로 서빙해 프로세스 하나, 포트 하나로 실행되기 때문입니다.
+Node.js 없이도 실행할 수 있도록 빌드 결과(`backend/app/static/`)를 저장소에 함께 넣어 두었습니다. `frontend/` 를 고쳤다면 `npm run build` 로 다시 만들어 함께 커밋해야 합니다.
 
 ## 테스트
 
