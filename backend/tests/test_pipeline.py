@@ -270,3 +270,48 @@ def test_metrics_math():
     assert m["win_rate"] == 0.5 and m["payoff_ratio"] == 3.0
     assert m["net_profit_after_llm"] == pytest.approx(2950.0) and m["return_after_llm"] == pytest.approx(0.0295)
     assert monthly_returns(s, 100_000) == [{"month": "2024-01", "return": 0.03, "benchmark": None}]
+
+
+# ── 모드 전환 안전장치 ────────────────────────────────────
+def test_default_db_is_separate_per_data_mode(monkeypatch):
+    from app.config import load_config
+    monkeypatch.delenv("DB_PATH", raising=False)
+    monkeypatch.setenv("DATA_MODE", "mock")
+    assert load_config().db_path.endswith("fund.db")
+    monkeypatch.setenv("DATA_MODE", "live")
+    assert load_config().db_path.endswith("fund-live.db")
+    monkeypatch.setenv("DB_PATH", "data/custom.db")
+    assert load_config().db_path.endswith("custom.db")
+
+
+def test_mock_history_cannot_be_opened_with_live_data():
+    from app.config import DataModeMismatch
+    f = make_fund()
+    f.run_meeting()
+    live = Config()
+    live.data_mode = "live"
+    with pytest.raises(DataModeMismatch):
+        Fund(live, f.store, PROVIDER, MockLLM(), f.clock)
+    Fund(Config(), f.store, PROVIDER, MockLLM(), f.clock)  # 같은 모드로는 다시 열 수 있다
+
+
+def test_demo_replay_never_runs_outside_sample_mode(monkeypatch, tmp_path):
+    from app import cli
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "x.db"))
+    monkeypatch.setenv("DATA_MODE", "mock")
+    monkeypatch.setenv("LLM_MODE", "anthropic")
+    called = []
+    monkeypatch.setattr(cli, "simulate", lambda *a, **k: called.append(1) or {})
+    monkeypatch.setattr(cli, "build_fund", lambda *a, **k: called.append("fund"))
+    cli.main(["demo"])
+    assert called == []
+
+
+def test_missing_api_key_becomes_readable_llm_error(monkeypatch):
+    from app.llm.anthropic_llm import AnthropicLLM
+    for k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_PROFILE"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("HOME", "/nonexistent")  # 저장된 로그인 프로필도 못 찾게 한다
+    llm = AnthropicLLM(Config())
+    with pytest.raises(LLMError, match="ANTHROPIC_API_KEY"):
+        llm.complete(LLMCall(agent="chart", tier="research", system="s", task="t", context={}, schema=AnalystReport))

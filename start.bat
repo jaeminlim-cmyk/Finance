@@ -38,13 +38,17 @@ copy /y "backend\requirements.txt" "%VENV%\requirements.txt" >nul
 
 if not exist "backend\app\static\index.html" goto nostatic
 
-if exist "data\fund.db" goto havedata
-echo [3/4] Replaying the last 60 trading days with sample data...
+if exist ".env" goto haveenv
+copy /y ".env.example" ".env" >nul
+echo       Created the settings file ".env". Edit it with Notepad to switch to real data and Claude.
+:haveenv
+
+echo [3/4] Checking settings...
 pushd backend
-"%VPY%" -m app.cli simulate --days 60 >nul
+"%VPY%" -m app.cli check
+"%VPY%" -m app.cli demo >nul
 if errorlevel 1 (popd & goto failed)
 popd
-:havedata
 
 echo [4/4] Starting the dashboard at http://127.0.0.1:8000
 echo       Keep this window open. Press Ctrl+C or close it to stop.

@@ -9,7 +9,7 @@ from statistics import fmean
 from .agents.pipeline import MeetingRunner
 from .broker.paper import PaperBroker
 from .clock import ET, Clock, RealClock, SimClock, at, is_market_open, iso, parse_iso, session_close, session_open
-from .config import Config, validate
+from .config import Config, DataModeMismatch, validate
 from .data.base import DataProvider, MarketData
 from .llm.base import LLMClient, LLMGateway
 from .performance import Performance
@@ -42,6 +42,16 @@ class Fund:
                  clock: Clock | None = None, *, historical: bool = False, llm_budget_usd: float | None = None):
         validate(cfg)
         self.cfg, self.store = cfg, store
+        # 가짜 가격으로 산 종목을 실제 시세로 평가하면 손익이 엉터리가 되므로, 기록을 만든 데이터 모드를 DB 에 남겨 두고 대조한다.
+        recorded = store.get_state("data_mode")
+        if recorded is None:
+            # 이 표식이 생기기 전에 만들어진 기록은 모두 샘플 데이터였다.
+            recorded = "mock" if store.scalar("SELECT COUNT(*) FROM meetings", default=0) else cfg.data_mode
+            store.set_state("data_mode", recorded)
+        if recorded != cfg.data_mode:
+            raise DataModeMismatch(
+                f"이 DB({store.path})의 기록은 DATA_MODE={recorded} 로 만들어졌는데 지금 설정은 DATA_MODE={cfg.data_mode} 입니다. "
+                "두 기록은 섞을 수 없습니다. .env 의 DB_PATH 줄을 지우면 모드별로 다른 파일을 자동으로 씁니다.")
         self.clock = clock or RealClock()
         self.historical = historical
         self.data = MarketData(provider, self.clock, historical=historical)

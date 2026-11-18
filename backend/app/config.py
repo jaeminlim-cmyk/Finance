@@ -85,6 +85,10 @@ class LiveTradingDisabled(RuntimeError):
     """1단계에서는 실거래 경로가 존재하지 않는다."""
 
 
+class DataModeMismatch(RuntimeError):
+    """샘플 데이터로 만든 기록에 실데이터를 붙이거나 그 반대를 하려 할 때."""
+
+
 def _resolve(path: str) -> Path:
     p = Path(path)
     return p if p.is_absolute() else ROOT / p
@@ -100,7 +104,9 @@ def load_config(path: str | None = None) -> Config:
     cfg.trading_mode = os.getenv("TRADING_MODE", "paper").strip().lower()
     cfg.data_mode = os.getenv("DATA_MODE", "mock").strip().lower()
     cfg.llm_mode = os.getenv("LLM_MODE", "mock").strip().lower()
-    cfg.db_path = str(_resolve(os.getenv("DB_PATH", "data/fund.db")))
+    # 샘플 데이터와 실데이터 기록이 섞이지 않도록 모드별로 다른 DB 파일을 기본값으로 쓴다.
+    default_db = "data/fund.db" if cfg.data_mode == "mock" else "data/fund-live.db"
+    cfg.db_path = str(_resolve(os.getenv("DB_PATH", "").strip() or default_db))
     validate(cfg)
     return cfg
 

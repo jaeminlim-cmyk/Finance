@@ -85,6 +85,12 @@ class AnthropicLLM(LLMClient):
             raise LLMError(f"Anthropic API 오류 {e.status_code}: {e.message}") from e
         except a.APIConnectionError as e:
             raise LLMError("Anthropic 연결 실패 — 네트워크를 확인하세요.") from e
+        except TypeError as e:
+            if "authentication" in str(e).lower():
+                raise LLMError("ANTHROPIC_API_KEY 가 설정되지 않았습니다. .env 파일에 키를 넣어 주세요.") from e
+            raise LLMError(f"Anthropic 호출 실패: {e}") from e
+        except a.AnthropicError as e:  # 스키마 변환 실패 등 SDK 가 올리는 그 밖의 오류
+            raise LLMError(f"Anthropic 호출 실패: {type(e).__name__}: {e}") from e
 
         u = response.usage
         usage = Usage(

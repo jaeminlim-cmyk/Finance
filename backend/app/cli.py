@@ -34,6 +34,57 @@ def _warn_cost(cfg, what: str) -> None:
               f"(예산 상한 ${cfg.llm.monthly_budget_usd:.0f}).", file=sys.stderr)
 
 
+def _check(cfg) -> bool:
+    """실데이터와 Claude 연결을 한 번씩 실제로 호출해 본다. 같은 설정으로 이미 통과했으면 다시 호출하지 않는다."""
+    from .agents.roster import AGENTS
+    from .data.base import MarketData
+    from .fund import make_llm, make_provider
+    from .llm.base import LLMCall, LLMError, LLMGateway
+    from .store import Store
+
+    print(f"모드: 데이터={cfg.data_mode}  LLM={cfg.llm_mode}  기록={cfg.db_path}")
+    if cfg.data_mode == "mock" and cfg.llm_mode == "mock":
+        return True
+    store = Store(cfg.db_path)
+    signature = {"data": cfg.data_mode, "llm": cfg.llm_mode, "research": cfg.llm.research_model, "senior": cfg.llm.senior_model}
+    if store.get_state("connection_check") == signature:
+        print("연결 확인: 이전에 같은 설정으로 통과했습니다.")
+        return True
+    ok, macro = True, None
+    if cfg.data_mode == "live":
+        try:
+            data = MarketData(make_provider(cfg), RealClock())
+            price, news, macro = data.quote("SPY"), data.news("AAPL", 3), data.macro()
+            if not price:
+                raise RuntimeError("SPY 현재가를 받지 못했습니다")
+            print(f"[확인] 시세: SPY {price:.2f}")
+            print(f"[확인] 뉴스: AAPL 최근 {len(news)}건" + (f" — {news[0].headline[:60]}" if news else " (0건이면 뉴스 분석가는 '데이터 없음'으로 보고합니다)"))
+        except Exception as e:
+            ok = False
+            print(f"[실패] 실데이터: {type(e).__name__}: {e}")
+    if cfg.llm_mode == "anthropic":
+        try:
+            gateway = LLMGateway(store, make_llm(cfg), cfg)
+            for tier, model in (("research", cfg.llm.research_model), ("senior", cfg.llm.senior_model)):
+                before = gateway.spent()
+                a = AGENTS["macro"]
+                rep = gateway.run(LLMCall(agent="connection_check", tier=tier, system=a.system, schema=a.schema,
+                                          task="연결 확인용 호출입니다. 주어진 데이터로 시장 국면을 간단히 판정하세요.",
+                                          context={"check": tier, "macro": macro}))
+                print(f"[확인] Claude {model}: 응답 받음 (국면 {rep.regime}, 비용 약 ${gateway.spent() - before:.4f})")
+        except LLMError as e:
+            ok = False
+            print(f"[실패] Claude: {e}")
+        except Exception as e:
+            ok = False
+            print(f"[실패] Claude: {type(e).__name__}: {e}")
+    if ok:
+        store.set_state("connection_check", signature)
+    else:
+        print("연결에 실패한 항목이 있습니다. .env 의 설정과 키를 확인하세요. 대시보드는 열리지만 회의가 실패할 수 있습니다.")
+    return ok
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="app.cli", description="AI 헤지펀드 모의 운용 도구")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -47,6 +98,8 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("meeting", help="지금 회의 1회 실행")
     sub.add_parser("status", help="현재 성과 요약")
     sub.add_parser("reset", help="운용 DB 삭제")
+    sub.add_parser("demo", help="샘플 모드이고 기록이 없을 때만 60거래일 재생 (start.bat 용)")
+    sub.add_parser("check", help="실데이터·Claude 연결 확인")
     args = ap.parse_args(argv)
     cfg = load_config()
 
@@ -61,6 +114,16 @@ def main(argv: list[str] | None = None) -> None:
                            llm_budget_usd=args.max_cost, progress=_progress)
         print(json.dumps(out, ensure_ascii=False, indent=1))
         return
+    if args.cmd == "check":
+        sys.exit(0 if _check(cfg) else 1)
+    if args.cmd == "demo":
+        # 실데이터나 Claude 모드에서 60거래일을 자동 재생하면 시간이 오래 걸리고 실제 비용이 나가므로 샘플 모드에서만 한다.
+        if cfg.data_mode != "mock" or cfg.llm_mode != "mock":
+            return
+        if build_fund(cfg).store.scalar("SELECT COUNT(*) FROM equity", default=0):
+            return
+        print("샘플 데이터로 최근 60거래일을 재생합니다…", file=sys.stderr)
+        args.cmd, args.days = "simulate", 60
     if args.cmd == "simulate":
         _warn_cost(cfg, "시뮬레이션")
         end = last_completed_session(RealClock().now())
