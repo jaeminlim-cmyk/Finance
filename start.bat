@@ -7,6 +7,11 @@ cd /d "%~dp0"
 chcp 65001 >nul
 set PYTHONUTF8=1
 
+rem Packages go to a short path outside the project. Inside a long folder name
+rem (for example under Downloads) Windows' 260-character path limit breaks pip.
+set "VENV=%LOCALAPPDATA%\aifund\venv"
+set "VPY=%VENV%\Scripts\python.exe"
+
 set "PY="
 where py >nul 2>nul && set "PY=py -3"
 if not defined PY if exist "%LOCALAPPDATA%\Programs\Python\Python313\python.exe" set "PY="%LOCALAPPDATA%\Programs\Python\Python313\python.exe""
@@ -17,18 +22,18 @@ if not defined PY set "PY=python"
 %PY% -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>nul
 if errorlevel 1 goto nopython
 
-if exist "backend\.venv\Scripts\python.exe" goto havevenv
-echo [1/4] Creating the Python environment...
-%PY% -m venv "backend\.venv"
+if exist "%VPY%" goto havevenv
+echo [1/4] Creating the Python environment in %VENV%
+%PY% -m venv "%VENV%"
 if errorlevel 1 goto failed
 :havevenv
-set "VPY=backend\.venv\Scripts\python.exe"
 
-if exist "backend\.venv\installed.txt" goto installed
+fc /b "backend\requirements.txt" "%VENV%\requirements.txt" >nul 2>nul
+if not errorlevel 1 goto installed
 echo [2/4] Installing packages. This takes a few minutes the first time...
-"%VPY%" -m pip install --disable-pip-version-check -q -e "backend[live]"
+"%VPY%" -m pip install --disable-pip-version-check -q -r "backend\requirements.txt"
 if errorlevel 1 goto failed
-echo ok> "backend\.venv\installed.txt"
+copy /y "backend\requirements.txt" "%VENV%\requirements.txt" >nul
 :installed
 
 if not exist "backend\app\static\index.html" goto nostatic
@@ -36,7 +41,7 @@ if not exist "backend\app\static\index.html" goto nostatic
 if exist "data\fund.db" goto havedata
 echo [3/4] Replaying the last 60 trading days with sample data...
 pushd backend
-".venv\Scripts\python.exe" -m app.cli simulate --days 60 >nul
+"%VPY%" -m app.cli simulate --days 60 >nul
 if errorlevel 1 (popd & goto failed)
 popd
 :havedata
@@ -45,7 +50,7 @@ echo [4/4] Starting the dashboard at http://127.0.0.1:8000
 echo       Keep this window open. Press Ctrl+C or close it to stop.
 start "" /min cmd /c "timeout /t 5 /nobreak >nul & start http://127.0.0.1:8000"
 pushd backend
-".venv\Scripts\python.exe" -m uvicorn app.api:app --host 127.0.0.1 --port 8000
+"%VPY%" -m uvicorn app.api:app --host 127.0.0.1 --port 8000
 popd
 goto end
 
